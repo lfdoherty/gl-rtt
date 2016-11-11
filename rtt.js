@@ -1,9 +1,10 @@
 
 //import glslify = require("glslify")
 
-const createFBO = require("@lfdoherty/gl-fbo")
+const createFBO = require("@lfdoherty/gl-fbo-single")
 const drawTriangle = require("@lfdoherty/fast-big-triangle")
 const createShader = require('@lfdoherty/gl-shader')
+const f2 = require('@lfdoherty/float2')
 
 const defaultVertexShader = `
 attribute vec2 position;
@@ -37,7 +38,7 @@ export class Handle {
 	_fbo;
 	_getFbo(){
 		if(!this._fbo){
-			this._fbo = createFBO(this._gl, this._dim, this._fboOptions);
+			this._fbo = createFBO(this._gl, this._dim.x, this._dim.y, this._fboOptions);
 		}
 		return this._fbo;
 	}
@@ -54,50 +55,56 @@ export class Handle {
 		gl.disable(gl.DEPTH_TEST);
 		gl.disable(gl.CULL_FACE);
 
-		const dim = fbo.shape;
+		const dim = this._dim
 		fbo.bind();
 
-		gl.viewport(0, 0, dim[0], dim[1])
+		gl.viewport(0, 0, dim.x, dim.y)
 		gl.clearColor(0, 0, 0, 0)
 		gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 		
 		shader.bind();
-		shader.uniforms.pixelSize = [1 / dim[0], 1 / dim[1]];
+		shader.uniforms.pixelSize = [1 / dim.x, 1 / dim.y];
 		shader.uniforms.frameId = Math.random();
-		shader.uniforms.resolution = dim;
+		shader.uniforms.resolution = dim.toArray();
 
 		if(cb){
-			const result = cb(shader.uniforms);
+			const result = cb(shader.uniforms, shader.attributes);
 			if(result !== 'do-not-fill-screen'){
 				drawTriangle(gl);
 			}
 		}else{
 			drawTriangle(gl);
 		}
-		gl.bindFramebuffer(gl.FRAMEBUFFER, null)
-		gl.useProgram(null)
+		//gl.bindFramebuffer(gl.FRAMEBUFFER, null)
+		//gl.useProgram(null)
 		return fbo.color[0];
 	}
 
 
 	get shape() {
-		return this._dim;//TODO properly wrap with individual element setters
+		return this._dim.copy();//TODO properly wrap with individual element setters
 	}
-	set shape(s: number[]) {
-		this._dim = s;
+	set shape(s: f2.T) {
+		this._dim = f2.as(s);
 		if(this._fbo){
-			this._fbo.shape = this._dim;
+			this._fbo.shape = this._dim.toArray();
 		}
 	}
 
 }
 
-export function create(gl: WebGLRenderingContext, dim: number[], shaderStrings: string | { vert: string, frag: string }, options: Options = {}) {
-
+export function makeShader(gl, shaderStrings){
 	const vertShader = shaderStrings.vert || defaultVertexShader;
 	const fragShader = shaderStrings.frag || shaderStrings;
 	
 	const shader = createShader(gl, vertShader, fragShader);
+	shader.createdByRtt = true
+	return shader;		
+}
+export function make(gl: WebGLRenderingContext, dim: f2.Duck, shaderStrings: string | { vert: string, frag: string }, options: Options = {}) {
+	dim = f2.as(dim)
+
+	const shader = shaderStrings.createdByRtt ? shaderStrings : makeShader(gl, shaderStrings);
 
 	return new Handle(gl, dim, options, shader);
 
